@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FastMes</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #111; color: #fff; }
+        .container { display: flex; height: 100vh; }
+        .sidebar { width: 300px; background: #1a1a1a; padding: 20px; border-right: 1px solid #333; overflow-y: auto; }
+        .main { flex: 1; display: flex; flex-direction: column; }
+        .header { background: #1a1a1a; padding: 15px; border-bottom: 1px solid #333; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; padding: 20px; }
+        .messages { flex: 1; overflow-y: auto; margin-bottom: 15px; }
+        .msg { margin: 10px 0; padding: 10px; border-radius: 8px; }
+        .msg.mine { background: #00ff99; color: #000; margin-left: 30%; }
+        .msg.theirs { background: #333; margin-right: 30%; }
+        input, button { padding: 10px; border: none; border-radius: 6px; font-size: 14px; }
+        button { background: #00ff99; color: #000; cursor: pointer; font-weight: bold; }
+        button:hover { opacity: 0.8; }
+        .friend { padding: 10px; margin: 5px 0; background: #2a2a2a; border-radius: 6px; cursor: pointer; }
+        .friend:hover { background: #3a3a3a; }
+        .input-area { display: flex; gap: 10px; }
+        .input-area input { flex: 1; }
+        .auth { display: none; }
+        .auth.show { display: block; }
+        .app { display: none; }
+        .app.show { display: flex; }
+        .form-group { margin: 10px 0; }
+        .form-group label { display: block; margin-bottom: 5px; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid #333; border-radius: 4px; background: #2a2a2a; color: #fff; }
+    </style>
+</head>
+<body>
+    <div class="auth show" id="authScreen">
+        <div style="padding: 40px; max-width: 400px; margin: 100px auto;">
+            <h1>🚀 FastMes</h1>
+            <div class="form-group">
+                <label>Login</label>
+                <input type="text" id="login" placeholder="Your login">
+            </div>
+            <div class="form-group">
+                <label>Password</label>
+                <input type="password" id="password" placeholder="Your password">
+            </div>
+            <button onclick="processLogin()">Login</button>
+            <button onclick="showRegister()" style="margin-left: 10px;">Register</button>
+            <div id="registerForm" style="margin-top: 20px; display: none;">
+                <h3>Register</h3>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="regName" placeholder="Your name">
+                </div>
+                <div class="form-group">
+                    <label>Login</label>
+                    <input type="text" id="regLogin" placeholder="Login">
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="regPassword" placeholder="Password">
+                </div>
+                <div class="form-group">
+                    <label>Hint</label>
+                    <input type="text" id="regHint" placeholder="Recovery hint">
+                </div>
+                <button onclick="processRegister()">Register</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="app" id="appScreen">
+        <div class="sidebar">
+            <h2>Friends</h2>
+            <input type="text" id="searchInput" placeholder="Enter friend ID" style="width: 100%; margin-bottom: 10px;">
+            <button onclick="searchUser()" style="width: 100%; margin-bottom: 15px;">Search</button>
+            <div id="friendsList"></div>
+            <hr style="margin: 20px 0; border: none; border-top: 1px solid #333;">
+            <button onclick="showProfile()" style="width: 100%; margin-bottom: 10px;">My Profile</button>
+            <button onclick="logout()" style="width: 100%; background: #ff4444;">Logout</button>
+        </div>
+
+        <div class="main">
+            <div class="header">
+                <h2 id="chatTitle">Select a chat</h2>
+            </div>
+            <div class="chat-area">
+                <div class="messages" id="messages"></div>
+                <div class="input-area">
+                    <input type="text" id="msgInput" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let myId = null;
+        let myName = null;
+        let currentChatId = null;
+        let currentMessages = [];
+
+        function processLogin() {
+            const login = document.getElementById('login').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!login || !password) {
+                alert('Fill all fields');
+                return;
+            }
+
+            socket.emit('login', { login, password }, (res) => {
+                if (res.success) {
+                    myId = res.id;
+                    myName = res.name;
+                    document.getElementById('authScreen').classList.remove('show');
+                    document.getElementById('appScreen').classList.add('show');
+                    refreshFriends();
+                } else {
+                    alert(res.message);
+                }
+            });
+        }
+
+        function processRegister() {
+            const name = document.getElementById('regName').value.trim();
+            const login = document.getElementById('regLogin').value.trim().toLowerCase();
+            const password = document.getElementById('regPassword').value;
+            const hint = document.getElementById('regHint').value.trim();
+
+            socket.emit('register', { name, login, password, hint }, (res) => {
+                if (res.success) {
+                    alert('Registered! Your ID: ' + res.id);
+                    document.getElementById('registerForm').style.display = 'none';
+                } else {
+                    alert(res.message);
+                }
+            });
+        }
+
+        function showRegister() {
+            document.getElementById('registerForm').style.display = document.getElementById('registerForm').style.display === 'none' ? 'block' : 'none';
+        }
+
+        function searchUser() {
+            const query = document.getElementById('searchInput').value.trim();
+            socket.emit('searchUser', query, (res) => {
+                if (res.found) {
+                    socket.emit('sendFriendRequest', res.login);
+                    alert('Friend request sent to ' + res.name);
+                } else {
+                    alert('User not found');
+                }
+            });
+        }
+
+        function refreshFriends() {
+            socket.emit('getFriends', (friends) => {
+                const list = document.getElementById('friendsList');
+                list.innerHTML = '';
+                friends.forEach(f => {
+                    const div = document.createElement('div');
+                    div.className = 'friend';
+                    div.textContent = f.name + ' (' + f.id + ')';
+                    div.onclick = () => openChat(f.login);
+                    list.appendChild(div);
+                });
+            });
+        }
+
+        function openChat(login) {
+            currentChatId = login;
+            socket.emit('getProfile', login, (profile) => {
+                document.getElementById('chatTitle').textContent = profile ? profile.name : login;
+            });
+            socket.emit('getMessages', login, (msgs) => {
+                currentMessages = msgs;
+                renderMessages();
+            });
+        }
+
+        function renderMessages() {
+            const div = document.getElementById('messages');
+            div.innerHTML = '';
+            currentMessages.forEach(m => {
+                const p = document.createElement('div');
+                p.className = 'msg ' + (m.senderId === myId ? 'mine' : 'theirs');
+                p.textContent = m.text;
+                div.appendChild(p);
+            });
+            div.scrollTop = div.scrollHeight;
+        }
+
+        function sendMessage() {
+            const text = document.getElementById('msgInput').value.trim();
+            if (!text || !currentChatId) return;
+            socket.emit('sendMessage', { toId: currentChatId, text });
+            document.getElementById('msgInput').value = '';
+        }
+
+        function showProfile() {
+            alert('My ID: ' + myId + '\nName: ' + myName);
+        }
+
+        function logout() {
+            location.reload();
+        }
+
+        socket.on('newMessage', ({ chatId, msg }) => {
+            if (msg.senderId === currentChatId || msg.senderId === myId) {
+                currentMessages.push(msg);
+                renderMessages();
+            }
+        });
+
+        socket.on('friendsUpdated', refreshFriends);
+    </script>
+</body>
+</html>
